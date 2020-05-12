@@ -10,10 +10,15 @@ import jwt
 # pylint: disable=import-error
 from flask import Flask, jsonify, request, abort
 
-
-JWT_SECRET = os.environ.get('JWT_SECRET', 'abc123abc1234')
-LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
-
+# Check for environment variables AND FAIL if they don't exist.  Don't set defaults.
+if not os.getenv("JWT_SECRET"):
+    raise RuntimeError("Environment variable JWT_SECRET is not set")
+if not os.getenv("LOG_LEVEL"):
+    raise RuntimeError("Environment variable LOG_LEVEL is not set")
+JWT_SECRET = os.environ.get('JWT_SECRET')
+LOG_LEVEL = os.environ.get('LOG_LEVEL')
+print(JWT_SECRET)
+print(LOG_LEVEL)
 
 def _logger():
     '''

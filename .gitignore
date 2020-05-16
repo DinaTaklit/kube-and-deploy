@@ -2,7 +2,7 @@
 *.code-workspace
 .vscode
 notes.txt
-# Just adding a line to test kicking off the CodeBuild process!
+# Just adding a line to test kicking off the CodeBuild process! 
 
 #
 .DS_Store

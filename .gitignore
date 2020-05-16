@@ -1,7 +1,7 @@
 # Mine
 *.code-workspace
-notes.txt
 .vscode
+notes.txt
 
 #
 .DS_Store

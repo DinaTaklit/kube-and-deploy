@@ -7,43 +7,12 @@ import datetime
 import functools
 import jwt
 
-# Try experiment
-import boto3
-
 # pylint: disable=import-error
 from flask import Flask, jsonify, request, abort
 
-# # ssm = boto3.client("ssm") # Needs region
-# ssm = boto3.client("ssm", region_name="us-west-2")
-# ssm_response = ssm.get_parameter(
-#     Name='JWT_SECRET',
-#     WithDecryption=True
-# )
-# print("ssm_response:")
-# print(ssm_response)
-# # Response Syntax
-# # {
-# #     'Parameter': {
-# #         'Name': 'string',
-# #         'Type': 'String'|'StringList'|'SecureString',
-# #         'Value': 'string',
-# #         'Version': 123,
-# #         'Selector': 'string',
-# #         'SourceResult': 'string',
-# #         'LastModifiedDate': datetime(2015, 1, 1),
-# #         'ARN': 'string',
-# #         'DataType': 'string'
-# #     }
-# # }
-# try:
-#     JWT_SECRET = ssm_response['Parameter']['Value']
-# except:
-#     JWT_SECRET = 'abc123abc1234'
-# print(JWT_SECRET)
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'abc123abc1234')
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
-
 
 
 def _logger():
@@ -89,9 +58,7 @@ def require_jwt(function):
 
 @APP.route('/', methods=['POST', 'GET'])
 def health():
-    # return jsonify("Healthy")
-    # Experiment, jsut to see what EKS *thinks* the secret is.  Remove this later
-    return jsonify(JWT_SECRET)  # FIXME
+    return jsonify("Healthy")
 
 
 @APP.route('/auth', methods=['POST'])

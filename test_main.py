@@ -24,7 +24,6 @@ def client():
 
 def test_health(client):
     response = client.get('/')
-    assert False    # Intentionally break build to test pre_build pipeline
     assert response.status_code == 200
     assert response.json == 'Healthy'
 

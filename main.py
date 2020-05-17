@@ -13,7 +13,8 @@ import boto3
 # pylint: disable=import-error
 from flask import Flask, jsonify, request, abort
 
-ssm = boto3.client("ssm")
+# ssm = boto3.client("ssm") # Needs region
+ssm = boto3.client("ssm", region_name="us-west-2")
 JWT_SECRET = ssm.get_parameter(
     Name='JWT_SECRET',
     WithDecryption=True

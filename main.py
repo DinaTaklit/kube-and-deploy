@@ -8,20 +8,20 @@ import functools
 import jwt
 
 # Try experiment
-import boto3
+# import boto3
 
 # pylint: disable=import-error
 from flask import Flask, jsonify, request, abort
 
 # ssm = boto3.client("ssm") # Needs region
-ssm = boto3.client("ssm", region_name="us-west-2")
-JWT_SECRET = ssm.get_parameter(
-    Name='JWT_SECRET',
-    WithDecryption=True
-) 
+# ssm = boto3.client("ssm", region_name="us-west-2")
+# JWT_SECRET = ssm.get_parameter(
+#     Name='JWT_SECRET',
+#     WithDecryption=True
+# ) 
 
 # BAD!  We are hiding real failures here.  Printed out abc123abc1234 at health check :-(
-# JWT_SECRET = os.environ.get('JWT_SECRET', 'abc123abc1234')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'abc123abc1234')
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
 
 

@@ -2,7 +2,6 @@
 *.code-workspace
 .vscode
 notes.txt
-# Just adding a line to test kicking off the CodeBuild process!   
 
 #
 .DS_Store
@@ -11,7 +10,7 @@ notes.txt
 *.pyc
 *.pyo
 env/
-env*
+#env*  # Intentionally allow an env_file to check in for sake of grading!  Don't do in production.
 dist/
 build/
 *.egg

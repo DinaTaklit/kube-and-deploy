@@ -10,7 +10,8 @@ notes.txt
 *.pyc
 *.pyo
 env/
-#env*  # Intentionally allow an env_file to check in for sake of grading!  Don't do in production.
+# Take this back out after grading.  Don't check in env_files
+env*
 dist/
 build/
 *.egg

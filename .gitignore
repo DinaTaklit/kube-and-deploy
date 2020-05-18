@@ -1,7 +1,7 @@
 # Mine
 *.code-workspace
 .vscode
-notes.txt
+# notes.txt # Adding my personal notes in case it may help someone else.
 
 #
 .DS_Store

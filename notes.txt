@@ -1,0 +1,458 @@
+in psql:
+show data_directory;
+
+then:
+pg_ctl stop -D "C:/Program Files/PostgreSQL/12/data"
+(may have to start terminal as administrator)
+
+=====================================================
+
+to see all docker *images*:
+docker image list
+
+to see running containers:
+docker ps
+
+to see all containers:
+docker ps -a
+
+Remove a container:
+docker rm <CONTAINER>
+
+See container port mappings:
+docker port CONTAINER
+
+pull an image:
+docker pull postgres:latest
+
+example of starting an image:
+docker run --name psql -e POSTGRES_PASSWORD=password! -p 5432:5432 -d postgres:latest
+The --name flag allows you to specify a name for the container that can be used later to reference the container. If you don’t specify a name, Docker will assign a random string name to the container.
+The -e flag stands for “environment”. This sets the environment variable POSTGRES_PASSWORD to the value password!.
+--env-file=<blah> for a whole environment file
+The -p flag stands for “publish”. This allows you to bind your local machine’s port 5432 to the container port 5432.
+    NOTE: here the first one is the host, the second one is the container port. 
+    So if it was -p 8080:3000, we connect to local host port 8080 which connects to container port 3000.
+    Don't need to provide the host port, and so we can avoid some conflicts by letting Docker assign it.  So -p 3000 will select a port on the host for us, which we can see with:
+    docker port <container_id | container_name>
+    This is a runtime decision, which is why ports don't go in the dockerfiles.  When we build an
+    image, we can't know what ports will be in use on the host machine when the image is run.
+The -d stands for “detach”. This tells Docker run the indicated image in the background and print the container ID. When you use this command, you will still be able to use the terminal to run other commands, otherwise you would need to open a new terminal.
+postgres:latest is the image name
+
+start a particular stopped docker container:
+docker start <id number>  (can also use the name we created with the --name argument, like psql)
+
+build dockerfile into image:
+docker build --tag test .
+--tag is like a short name
+. means look for dockerfile in current directory
+
+psql -h 0.0.0.0 -p 32769 -U postgres
+--> this wasn't working, but for some reason using localhost or 127.0.0.1 did work.  I know this is actually contacting it into the container, because I have no relations defined inside "\d"!
+--> Don't actually do pg_ctl stop after all, just needed to change this to the local host instead of 0.0.0.0 (confirmed)
+
+
+Couldn't bind to port 80 (used by something), so picked a high number instead 30080 for localhost.
+docker run --name apitest --env-file=env_file -p 30080:8080 -d jwt-api-test
+
+Worked!  Running Gunicorn in a local container, and had to set host=localhost:30080 in Postman
+
+set JWT_SECRET=myjwtsecret
+set LOG_LEVEL=DEBUG
+
+set TOKEN=curl -d '{"email":"<EMAIL>","password":"<PASSWORD>"}' -H "Content-Type: application/json" -X POST localhost:8080/auth  | jq -r '.token'
+set HEALTH=curl localhost:8080/
+
+curl -d "{\"email\":\"EMAIL\",\"password\":\"PASSWORD\"}" -H "Content-Type: application/json" -X POST localhost:8080/auth
+returned token:
+{
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE1OTA3ODk3OTcsIm5iZiI6MTU4OTU4MDE5NywiZW1haWwiOiJFTUFJTCJ9.kDMlyHk35wVTu6TYlGgXfJRCAtLcP3m5IjdYXKpJQss"
+}
+
+curl --request GET "http://127.0.0.1:8080/contents" -H "Authorization: Bearer ${TOKEN}"
+
+curl "http://localhost:80/"
+
+=====================================================
+
+which aws 
+aws configure list
+
+to configure it:
+aws configure --profile default
+    (everything blank but Access key ID and Access Key)
+
+(Now a good time to set the region too if not already set)
+λ  aws configure set region us-west-2
+
+create a EKS cluster, with all default arguments and a random name.  2@ XM5-Large nodes.
+eksctl create cluster   
+--name eksctl-demo
+
+kubectl get nodes
+(or look for "create_complete" in your CloudFormation dashboard)
+
+to clean up clusters when you're done using them (don't use EKS console because you could delete the EKS cluster but would leave dangling resources that bill you quickly)
+instead, to delete cluster and all resources, delete using:
+eksctl delete cluster eksctl-demo
+or
+delete in cloud formation (delete button)
+
+can make smaller nodes:
+eksctl create cluster \
+--name eksctl-demo \
+--nodegroup-name my-micro-worker \
+--node-type t2.micro \
+--nodes 1 \
+--nodes-min 1 \
+--nodes-max 2 \
+
+===============================================================================================
+
+A lot of the commands for setting up EKS and IAM roles had to be modified on Windows (grrr)
+Lines starting with λ are ones I actually typed (Cmder.exe prompt).
+
+(I changed the order (swapped steps 0 and 1) in which we set up the IAM role and when we turn on the cluster, as we don't need the cluster running
+to set up the role, so saves some money) --> Changed this back.  Thing wasn't working.  Get it working, then try to figure
+out advanced methods!
+
+0. # Create an EKS cluster.
+Again, I changed the order of operations of steps 0 and 1, since we don't need this cluster running the entire time we mess with IAM roles!
+NO: λ  eksctl create cluster --name simple-jwt-api --node-type t2.micro --nodes 1 --nodes-min 1 --nodes-max 2
+
+NOTE: For some reason this cluster seems to take FOREVER to create, maybe cause it's micro.  I haven't had any bills yet 
+(still in free 12 month trial I guess.. not sure what bills everyone was complaining about) but instead just do the 
+default options maybe it will run faster.  Also, just do things exactly like tutorial first, THEN advanced stuff!
+
+λ  eksctl create cluster --name simple-jwt-api
+
+1. # Set up an IAM role for the cluster
+# Create an IAM role that CodeBuild can use to interact with EKS.
+
+a. Set an environment variable ACCOUNT_ID to the value of your AWS account id. You can do this with awscli:
+Original (Linux)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+In Windows you can't set the output of a command to an variable easily. Either do it manually with set VAR or try:
+λ  for /f %i in ('aws sts get-caller-identity --query Account --output text') do set ACCOUNT_ID=%i
+
+Test:
+λ  echo %ACCOUNT_ID%
+
+b. Create a role policy document that allows the actions "eks:Describe*" and "ssm:GetParameters". You can do this by setting an environment variable with the role policy:
+Original (Linux):  TRUST="{ \"Version\": \"2012-10-17\", \"Statement\": [ { \"Effect\": \"Allow\", \"Principal\": { \"AWS\": \"arn:aws:iam::${ACCOUNT_ID}:root\" }, \"Action\": \"sts:AssumeRole\" } ] }"
+
+Set TRUST. You can reference to ACCOUNT_ID using %VAR%
+
+λ  set TRUST="{ \"Version\": \"2012-10-17\", \"Statement\": [ { \"Effect\": \"Allow\", \"Principal\": { \"AWS\": \"arn:aws:iam::%ACCOUNT_ID%:root\" }, \"Action\": \"sts:AssumeRole\" } ] }"
+
+"{ \"Version\": \"2012-10-17\", 
+   \"Statement\": [ { \"Effect\": \"Allow\", 
+                      \"Principal\": { \"AWS\": \"arn:aws:iam::%ACCOUNT_ID%:root\" }, 
+                                      \"Action\": \"sts:AssumeRole\" } ] }"
+
+Check if it worked using echo:
+λ  echo %TRUST%
+
+c. Create a role named 'UdacityFlaskDeployCBKubectlRole' using the role policy document:
+Original (Linux):  aws iam create-role --role-name UdacityFlaskDeployCBKubectlRole --assume-role-policy-document "$TRUST" --output text --query 'Role.Arn'
+
+Apply the command to create the role (" " around %TRUST% need to be deleted from original command)
+λ  aws iam create-role --role-name UdacityFlaskDeployCBKubectlRole --assume-role-policy-document %TRUST% --output text --query 'Role.Arn'
+
+d. Create a role policy document that also allows the actions "eks:Describe*" and "ssm:GetParameters". You can create the document in your tmp directory:
+Original (Linux):  echo '{ "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Action": [ "eks:Describe*", "ssm:GetParameters" ], "Resource": "*" } ] }' > iam-role-policy 
+
+For Windows, just put it in same project dir instead.  Doesn't really matter where we put this file.
+Also, need to remove the single ' ' around the arguments we're echoing, they make it into the output JSON file (which aren't valid JSON)
+λ  echo { "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Action": [ "eks:Describe*", "ssm:GetParameters" ], "Resource": "*" } ] } > iam-role-policy 
+
+Try this:, changed to ssm:GetParameter* to get other permissions
+I think ssm:GetParameter (singular) is what we were missing, and what os.environ.get() picks up!
+λ  echo { "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Action": [ "eks:Describe*", "ssm:GetParameter*" ], "Resource": "*" } ] } > iam-role-policy 
+
+e. Attach the policy to the 'UdacityFlaskDeployCBKubectlRole'. You can do this using awscli:
+Original (Linux):  aws iam put-role-policy --role-name UdacityFlaskDeployCBKubectlRole --policy-name eks-describe --policy-document file:///tmp/iam-role-policy
+
+Windows:  change the path to the new one we just made.
+λ  aws iam put-role-policy --role-name UdacityFlaskDeployCBKubectlRole --policy-name eks-describe --policy-document file://iam-role-policy
+
+You have now created a role named 'UdacityFlaskDeployCBKubectlRole'
+
+*NOTE* I see EKS:Describe permissions on this role in the IAM dashboard, but *NOT* any SSM (used for the secure secrets)
+Never mind  :-(  I see it.  We also gave the policy the "name" eks-describe, but when I drilled into that, I saw SSM GetParameter.
+
+# 2. Grant the role access to the cluster. The 'aws-auth ConfigMap' is used to grant role based access control to your cluster.
+<SKIP THIS STEP 2a and 2c below.  EDIT not PATCH!  Skip past to after part 2c>
+a. Get the current configmap and save it to a file:
+Original (Linux): kubectl get -n kube-system configmap/aws-auth -o yaml > /tmp/aws-auth-patch.yml
+
+Windows (map to our new tmp folder):
+λ  kubectl get -n kube-system configmap/aws-auth -o yaml > aws-auth-patch.yml
+
+Do just: kubectl get -n kube-system configmap/aws-auth -o yaml
+to see what it is currently.
+
+b. In the data/mapRoles section of this document add, replacing <ACCOUNT_ID> with your account id (original format from class was wrong!!!):
+    - groups:
+      - system:masters
+      rolearn: arn:aws:iam::xxxxxxxxxxxx:role/UdacityFlaskDeployCBKubectlRole
+      username: build
+  
+<SKIP THIS STEP 2a and 2c below.  EDIT not PATCH!>
+c. Now update your cluster's configmap:
+Original (Linux):  kubectl patch configmap/aws-auth -n kube-system --patch "$(cat /tmp/aws-auth-patch.yml)"
+
+NOTE: I tried a million combinations of this and nothing worked.  
+-Using type instead of cat (even though on Cmder.exe which I use supports cat)
+-Cmder.exe with and without Admin priveleges
+-Using git-bash shell instead, with and without Admin priveleges
+
+Kept getting either 
+# BadRequest, json: cannot unmarshal string into Go value of type map  (this occurred when you put the command in double quote " ")
+OR
+# error: there is no need to specify a resource type as a separate argument when passing arguments in resource/name form (e.g. 'kubectl get resource/<resource_name>' instead of 'kubectl get resource resource/<resource_name>'
+errors.
+
+Only thing that worked for me was to EDIT the config instead of trying to PATCH it.
+
+λ  kubectl edit -n kube-system configmap/aws-auth
+
+No, try this instead (if getting server 52 error, Empty reply from server):
+from: https://github.com/jungleBadger/FSND-Deploy-Flask-App-to-Kubernetes-Using-EKS/blob/master/troubleshooting/deploy.md
+Set this up in parallel with the original role "groups" section, paste right above original group (shouldn't really matter where):
+    - groups:
+      - system:masters
+      rolearn: arn:aws:iam::<YOUR_ACCOUNT_ID>:role/UdacityFlaskDeployCBKubectlRole
+      username: build
+
+What this will do is open up your configuration in a default editor (on Windows it will likely be Notepad). Paste in the new role for the build tool 
+and format it properly spaces (can check YAML formatting by copy/pasting entire file contents into http://www.yamllint.com/). 
+Then save the file. When you close it, kubectl will apply the changes.
+
+You shouldn't ever need the patch file this way, BUT, if you ever have to start the cluster again you'll need to go through
+these steps again, or the Build tool won't have it.
+
+You can confirm the changes went through by running kubectl get again, but this time I dropped the part that writes it out to a file (just print to terminal) and you should see your new role added.
+
+λ  kubectl get -n kube-system configmap/aws-auth -o yaml
+
+Should see the new role:
+
+(venv) λ kubectl get -n kube-system configmap/aws-auth -o yaml
+File association not found for extension .py
+apiVersion: v1
+data:
+  mapRoles: |
+    - groups:
+      - system:bootstrappers
+      - system:nodes
+      rolearn: arn:aws:iam::xxxxxxxxxxxx:role/eksctl-simple-jwt-api-nodegroup-n-NodeInstanceRole-TWAYO7ZHCGYY
+      username: system:node:{{EC2PrivateDNSName}}
+    - groups:
+      - system:masters
+      rolearn: arn:aws:iam::xxxxxxxxxxxx:role/UdacityFlaskDeployCBKubectlRole
+      username: build
+  mapUsers: |
+    []
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2020-05-16T20:48:47Z"
+  name: aws-auth
+  namespace: kube-system
+  resourceVersion: "5644"
+  selfLink: /api/v1/namespaces/kube-system/configmaps/aws-auth
+  uid: 6e3fbd9f-d8e9-4d7f-a3a0-eadd881c44a2
+
+
+===============================================================
+
+Deployment to Kubernetes using CodePipeline and CodeBuild
+
+Create the Pipeline
+You will now create a pipeline which watches your Github. When changes are checked in, it will build a new image and deploy it to your cluster.
+
+1. Generate a GitHub access token. A Github access token will allow CodePipeline to monitor when a repo is changed. A token can be generated here. 
+You should generate the token with full control of private repositories, as shown in the image below. Be sure to save the token somewhere that is secure.
+--> I saved to my private_aws_vars.txt file which is not in repo. ~jdw
+
+2. The file buildspec.yml instructs CodeBuild. We need a way to pass your jwt secret to the app in kubernetes securly. You will be using AWS Parameter Store to do this. First add the following to your buildspec.yml file:
+
+env:
+  parameter-store:         
+    JWT_SECRET: JWT_SECRET
+
+(jdw: This second JWT_SECRET is a placeholder that AWS Parameter Store will replace)
+This lets CodeBuild know to set an evironment variable based on a value in the parameter-store.
+
+3. Put secret into AWS Parameter Store
+NOTE: Here "YourJWTSecret" is the signing key for our app.  Not related at all to the GitHub access token above!
+For the sake of this homework assignment, it should match what we put in our env_file (for local runs only), so grader can test!
+
+λ  aws ssm put-parameter --name JWT_SECRET --value "secretysecret" --type SecureString
+
+(This gave an error "You must specify a region.  You can also configure your region by running "aws configure")
+
+Let's set default region to:
+us-west-2
+once and for all.
+
+λ  aws configure set region us-west-2
+
+Then try the 'aws ssm put-parameter' command again.
+
+Then check it:
+
+λ  aws ssm get-parameter --name JWT_SECRET
+
+4. Modify CloudFormation template.
+
+There is file named ci-cd-codepipeline.cfn.yml, this the the template file you will use to create your CodePipeline pipeline. Open this file and go to the 'Parameters' section. These are parameters that will accept values when you create a stack. Fill in the 'Default' value for the following:
+-EksClusterName : use the name of the EKS cluster you created above --> simple-jwt-api
+-GitSourceRepo : use the name of your project's github repo.  --> kube-and-deploy
+-GitHubUser : use your github user name --> cmdlinebeep
+-KubectlRoleName : use the name of the role you created for kubectl above --> UdacityFlaskDeployCBKubectlRole
+Save this file.
+
+5. Create a stack for CodePipeline
+
+-Go the the CloudFormation service in the aws console.
+-Press the 'Create Stack' button.  Select "with New resources" option.
+-Choose the 'Upload template' (it will put it in an S3 bucket) option and upload the template file 'ci-cd-codepipeline.cfn.yml'
+    S3 URL: https://s3-us-west-2.amazonaws.com/cf-templates-p77whvmjt4te-us-west-2/2020137r2s-ci-cd-codepipeline.cfn.yml
+-Press 'Next'. Give the stack a name, fill in your GitHub login and the Github access token generated in step 1.
+    Gave name FlaskAppStack.
+-Confirm the cluster name matches your cluster, the 'kubectl IAM role' matches the role you created above, and the repository matches the name of your forked repo.
+-Create the stack.
+
+You can check its status in the CloudFormation console.
+
+6. Check the pipeline works. Once the stack is successfully created, commit a change to the master branch of your github repo. Then, in the aws console go to the CodePipeline UI. You should see that the build is running.
+
+7. To test your api endpoints, get the external ip for your service:
+
+λ  kubectl get services simple-jwt-api -o wide
+
+Now use the external ip url to test the app:
+
+λ  set EXTURL=<blah we got from AWS>
+
+Health check:
+λ  curl %EXTURL%/
+or just navigate to that URL directly in your browser.
+
+λ  curl -d "{\"email\":\"EMAIL\",\"password\":\"PASSWORD\"}" -H "Content-Type: application/json" -X POST %EXTURL%/auth
+returned token:
+{"token":"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE1OTA4OTk3MTYsIm5iZiI6MTU4OTY5MDExNiwiZW1haWwiOiJFTUFJTCJ9.ECGO77AORD14pdOf9HESvVDM6MO-cohBqwaAwFQKDms"}
+λ  set TOKEN=<whatever you received above command line, including entire JSON structure>
+
+Then:
+curl --request GET %EXTURL%/contents -H "Authorization: Bearer ${TOKEN}"
+to test it and see if it returned the decoded EMAIL.
+
+Manually expand it:
+curl --request GET %EXTURL%/contents -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE1OTA4OTk3MTYsIm5iZiI6MTU4OTY5MDExNiwiZW1haWwiOiJFTUFJTCJ9.ECGO77AORD14pdOf9HESvVDM6MO-cohBqwaAwFQKDms"
+
+Save the external IP from above to provide to the reviewer when you submit your project.
+
+Debugging:
+kubectl get pods
+(got crashloopbackoff status on my pods!  why?)
+
+kubectl describe pods
+
+kubectl logs <POD_ID>
+kubectl logs simple-jwt-api-fdb5dfb47-5bqh9
+
+Showed: 
+  File "/app/main.py", line 15, in <module>
+    raise RuntimeError("Environment variable JWT_SECRET is not set")
+RuntimeError: Environment variable JWT_SECRET is not set
+
+Why isn't it getting it from the Amazon Parameter Store?
+
+aws ssm get-parameter --name JWT_SECRET
+aws ssm put-parameter --name JWT_SECRET --value "secretysecret" --type SecureString --overwrite
+
+Reverted the code back to starter code that had the default abc123abc1234 key, and it works.
+But doesn't that mean it's not getting my environment variable like I think it is?
+
+*DEBUGGING THIS WITH DANIEL AND PROCEEDING AHEAD WITH STARTER CODE*
+
+To debug in the pod, we can attach your terminal to the container:
+λ  kubectl exec -it <POD_ID> /bin/bash
+
+Turns out the JWT_SECRET was available in the build, but not in the Python environment in the pod.
+Need to get a way for them to share it.
+
+Add this under 'containers' key spec in simple-jwt-api.yml file:
+ env:
+ - name: JWT_SECRET
+   value: JWT_SECRET_VALUE
+
+Now load this env value through the ci/cd buildspec.  It needs to replace the JWT_SECRET_VALUE
+we placed above with the JWT_VALUE from AWS SSM.
+
+Add to your buildspec.yml under the 'pre_build' phase:
+- sed -i 's@JWT_SECRET_VALUE@'"$JWT_SECRET"'@' simple-jwt-api.yml
+
+Now it should replace that placeholder with the real value!
+
+
+Another option, from another answer:
+
+In my buildspec.yml file post-build section, I added an additional kubectl command:
+
+kubectl set env deployment/simple-jwt-api JWT_SECRET=$JWT_SECRET
+
+For placement, see below:
+
+  post_build:
+    commands:
+      - docker push $REPOSITORY_URI:$TAG
+      - CREDENTIALS=$(aws sts assume-role --role-arn $EKS_KUBECTL_ROLE_ARN --role-session-name codebuild-kubectl --duration-seconds 900)
+      - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
+      - export AWS_SECRET_ACCESS_KEY="$(echo ${CREDENTIALS} | jq -r '.Credentials.SecretAccessKey')"
+      - export AWS_SESSION_TOKEN="$(echo ${CREDENTIALS} | jq -r '.Credentials.SessionToken')"
+      - export AWS_EXPIRATION=$(echo ${CREDENTIALS} | jq -r '.Credentials.Expiration')
+      - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME
+      - kubectl apply -f simple_jwt_api.yml
+      - kubectl set env deployment/simple-jwt-api JWT_SECRET=$JWT_SECRET
+      - printf '[{"name":"simple_jwt_api","imageUri":"%s"}]' $REPOSITORY_URI:$TAG > build.json
+      - pwd
+      - ls
+
+=========================================
+
+Adding Tests to the Build
+
+The final part of this project involves adding tests to your deployment. You can follow the steps below to accomplish this.
+
+1. Add running tests as part of the build.
+
+To require the unit tests to pass before our build will deploy new code to your cluster, you will add the tests to the build stage. Remember you installed the requirements and ran the unit tests locally at the beginning of this project. You will add the same commands to the buildspec.yml:
+
+-Open buildspec.yml
+-In the prebuild section, add a line to install the requirements and a line to run the tests. You may need to refer to 'pip' as 'pip3' and 'python' as 'python3'
+
+Add to end of pre_build/commands section:
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pytest test_main.py
+
+-save the file
+
+2. You can check the tests prevent a bad deployment by breaking the tests on purpose:
+
+-Open the test_main.py file
+-Add assert False to any of the tests
+-Commit your code and push it to Github
+-Check that the build fails in CodePipeline
+
+
+
+**************
+NOTE: When submitting project, don't forget to manually paste the env_file into the .zip file, or just paste
+those file contents into the notes for them, or the grader can't test it!
+**************
